@@ -1,0 +1,41 @@
+# Environment
+.env
+*.env
+
+# Settings (may contain API keys)
+settings.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Models (downloaded on first use)
+models/
+
+# Output
+output/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+app.log
+
+# Build artifacts
+*.spec
+build_scripts/dist/

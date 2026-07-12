@@ -1,0 +1,28 @@
+# Bili Video Summarizer - 依赖
+
+# GUI
+customtkinter>=5.2.0
+
+# 视频处理 (字幕/音频下载)
+yt-dlp>=2024.0.0
+
+# 模型下载 (国内高速)
+modelscope>=1.0.0
+
+# AI 概述 (DeepSeek API, OpenAI 兼容)
+openai>=1.0.0
+
+# 语音识别
+faster-whisper>=1.0.0
+# torch 会作为 faster-whisper 的依赖自动安装
+# 如需安装 CPU 版 torch: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# B站 API
+bilibili-api-python>=16.0.0
+
+# 工具
+python-dotenv>=1.0.0
+Pillow>=10.0.0
+
+# 打包 (开发依赖)
+# pyinstaller>=6.0.0
