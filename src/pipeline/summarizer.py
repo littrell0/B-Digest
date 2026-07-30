@@ -173,7 +173,7 @@ class AISummarizer:
         if detail not in SUMMARY_DETAIL_CONFIG:
             detail = "大致概览"
 
-        logger.info("开始生成概述 (详细度: %s, 原文: %d字)", detail, len(transcript))
+        # AI概述生成中
 
         # 短文本直接总结
         if len(transcript) <= 40000:
@@ -203,7 +203,7 @@ class AISummarizer:
     ) -> str:
         chunks = split_text_into_chunks(transcript, max_chars=30000)
         total = len(chunks)
-        logger.info("文本分为 %d 块", total)
+        # 分块处理
 
         # 阶段1: 逐块总结
         chunk_summaries = []
@@ -227,7 +227,7 @@ class AISummarizer:
             {"role": "user", "content": merge["user"]},
         ]
         final = self._call_api_with_retry(messages, max_tokens=4096)
-        logger.info("概述完成: %d字", len(final))
+        # 概述合并完成
         return final
 
     def _call_api_with_retry(

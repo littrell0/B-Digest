@@ -74,7 +74,6 @@ class OutputWriter:
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        logger.info("逐字稿已写入: %s", file_path)
         return file_path
 
     def write_summary(
@@ -120,7 +119,6 @@ class OutputWriter:
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        logger.info("AI概述已写入: %s", file_path)
         return file_path
 
     def write_all(

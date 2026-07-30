@@ -66,7 +66,7 @@ class QATab(ctk.CTkFrame):
         desc = ctk.CTkLabel(
             self, text="勾选视频，基于逐字稿向 AI 提问视频内容",
             font=ctk.CTkFont(family="Microsoft YaHei", size=11),
-            text_color="#8b949e",
+            text_color=None,
         )
         desc.pack(anchor="w", padx=10, pady=(0, 8))
 
@@ -123,7 +123,7 @@ class QATab(ctk.CTkFrame):
         self.context_label = ctk.CTkLabel(
             right, text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e", anchor="w",
+            text_color=None, anchor="w",
         )
         self.context_label.pack(fill="x", padx=10, pady=(0, 5))
 
@@ -186,7 +186,7 @@ class QATab(ctk.CTkFrame):
             ctk.CTkLabel(
                 self.video_tree, text="暂无已处理的视频",
                 font=ctk.CTkFont(family="Microsoft YaHei", size=11),
-                text_color="#8b949e",
+                text_color=None,
             ).pack(pady=20)
             return
 

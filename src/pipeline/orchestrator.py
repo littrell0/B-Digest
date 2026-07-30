@@ -1,11 +1,11 @@
 """
-管线编排器 - 协调整个处理流程
+管线编排器
 """
 import logging
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 from src.config import Config
 from src.pipeline.video_info import VideoInfo, extract_video_info
@@ -20,7 +20,6 @@ logger = logging.getLogger("bili_summarizer")
 
 @dataclass
 class ProcessResult:
-    """处理结果"""
     video_title: str = ""
     video_url: str = ""
     bvid: str = ""
@@ -29,7 +28,7 @@ class ProcessResult:
     output_dir: Optional[Path] = None
     transcript_file: Optional[Path] = None
     summary_file: Optional[Path] = None
-    source: str = ""           # "subtitles" 或 "asr"
+    source: str = ""
     error: Optional[str] = None
     cancelled: bool = False
     duration_seconds: float = 0.0
@@ -40,13 +39,7 @@ class ProcessResult:
 
 
 class PipelineManager:
-    """处理管线编排器"""
-
-    def __init__(
-        self,
-        config: Config,
-        progress_callback: Optional[Callable] = None,
-    ):
+    def __init__(self, config: Config, progress_callback: Optional[Callable] = None):
         self.config = config
         self.progress_callback = progress_callback
         self.subtitle_extractor = SubtitleExtractor()
@@ -60,53 +53,45 @@ class PipelineManager:
         return self._output_writer
 
     def cancel(self):
-        """取消当前处理"""
-        logger.info("用户请求取消处理")
         self._cancel_event.set()
 
     def reset(self):
-        """重置取消状态"""
         self._cancel_event.clear()
 
     def _is_cancelled(self) -> bool:
         return self._cancel_event.is_set()
 
-    def _report_progress(self, step: str, percent: int, message: str = ""):
-        logger.info("[%d%%] %s: %s", percent, step, message or step)
+    def _gui(self, pct: int, msg: str = ""):
+        """更新进度条，不写控制台"""
         if self.progress_callback:
             try:
-                self.progress_callback(step, percent, message)
+                self.progress_callback("", pct, msg)
             except Exception:
                 pass
 
-    def process_single_video(self, url: str, force_asr: bool = False) -> ProcessResult:
-        """
-        处理单个视频的完整管线
-        """
-        import time
-        start_time = time.time()
+    def _log(self, msg: str):
+        """控制台一行"""
+        logger.info(msg)
 
+    def process_single_video(self, url: str, force_asr: bool = False) -> ProcessResult:
+        import time
+        start = time.time()
         self.reset()
         result = ProcessResult(video_url=url)
 
-        # Step 1: 提取视频信息
+        # Step 1: 视频信息
         if self._is_cancelled():
             result.cancelled = True
             return result
-
-        self._report_progress("提取视频信息", 5)
         try:
-            video_info = extract_video_info(url)
-            result.video_title = video_info.title
-            result.bvid = video_info.bvid
+            vi = extract_video_info(url)
+            result.video_title = vi.title
+            result.bvid = vi.bvid
         except Exception as e:
             result.error = f"视频信息提取失败: {e}"
             return result
 
-        self._report_progress("视频信息获取完成", 10,
-                              f"标题: {video_info.title}, 时长: {video_info.duration_str}")
-
-        # Step 2: 获取字幕
+        # Step 2: 字幕 或 ASR
         transcript = ""
         source = ""
 
@@ -114,33 +99,28 @@ class PipelineManager:
             result.cancelled = True
             return result
 
-        if not force_asr and video_info.has_ai_subtitles:
-            self._report_progress("下载字幕中", 15)
-            vtt_path = self.subtitle_extractor.try_extract_subtitles(
-                url, video_info.subtitles
-            )
-            if vtt_path:
-                self._report_progress("解析字幕文本", 30)
-                transcript = self._parse_subtitle_file(vtt_path)
+        if not force_asr and vi.has_ai_subtitles:
+            vtt = self.subtitle_extractor.try_extract_subtitles(url, vi.subtitles)
+            if vtt:
+                transcript = self._parse_subtitle_file(vtt)
                 source = "字幕提取"
-                self._report_progress("字幕提取完成", 40, f"共 {len(transcript)} 字符")
+                self._log("字幕提取完成")
             else:
                 force_asr = True
 
-        # Step 3: 语音识别兜底
-        if force_asr or not video_info.has_ai_subtitles:
+        if force_asr or not vi.has_ai_subtitles:
             if self._is_cancelled():
                 result.cancelled = True
                 return result
-
-            self._report_progress("下载音频中", 20)
+            model = self.config.whisper_model
+            self._log(f"加载 {model} → 下载音频完成")
             try:
                 transcript = self._transcribe_via_asr(url)
                 source = "语音识别"
-                self._report_progress("语音识别完成", 60, f"共 {len(transcript)} 字符")
+                self._gui(100)
             except ASRCancelledError:
                 result.cancelled = True
-                result.transcript = transcript  # 保留已完成的部分
+                result.transcript = transcript
                 return result
             except Exception as e:
                 result.error = f"语音识别失败: {e}"
@@ -153,35 +133,15 @@ class PipelineManager:
         result.transcript = transcript
         result.source = source
 
-        # Step 4: AI概述
+        # 输出目录
         if self._is_cancelled():
             result.cancelled = True
             return result
-
-        self._report_progress("生成AI概述中", 65)
-        try:
-            summary = self._summarize(transcript, video_info.title)
-            result.summary = summary
-            self._report_progress("AI概述生成完成", 85, f"共 {len(summary)} 字符")
-        except Exception as e:
-            result.error = f"AI概述生成失败: {e}"
-            logger.warning("AI概述失败，但仍会保存逐字稿")
-
-        # Step 5: 写入文件
-        if self._is_cancelled():
-            result.cancelled = True
-            return result
-
-        self._report_progress("写入输出文件", 90)
         try:
             paths = self.output_writer.write_all(
-                video_title=video_info.title,
-                transcript=transcript,
-                summary=result.summary or "(AI概述生成失败)",
-                video_url=url,
-                duration=video_info.duration_str,
-                source=source,
-                uploader=video_info.uploader,
+                video_title=vi.title, transcript=transcript,
+                summary="", video_url=url, duration=vi.duration_str,
+                source=source, uploader=vi.uploader,
                 fmt=self.config.output_format or "md",
             )
             result.output_dir = paths.output_dir
@@ -191,63 +151,58 @@ class PipelineManager:
             result.error = f"文件写入失败: {e}"
             return result
 
-        result.duration_seconds = time.time() - start_time
-        self._report_progress("处理完成", 100, f"耗时 {result.duration_seconds:.1f} 秒")
+        self._log(f"输出: {result.output_dir}")
+
+        # Step 3: AI概述
+        if self._is_cancelled():
+            result.cancelled = True
+            return result
+        summary = ""
+        detail = self.config.summary_detail or "精细概览"
+        model = self.config.api_model or "?"
+        self._log("AI概述生成中...")
+        try:
+            summary = self._summarize(transcript, vi.title)
+            result.summary = summary
+            # 写 summary
+            self.output_writer.write_summary(
+                video_title=vi.title, summary=summary, video_url=url,
+                duration=vi.duration_str, model_name=model, uploader=vi.uploader,
+                fmt=self.config.output_format or "md",
+            )
+        except Exception as e:
+            result.error = f"AI概述生成失败: {e}"
+
+        result.duration_seconds = time.time() - start
+        t = int(result.duration_seconds)
+        ts = f"{t//60}分{t%60}秒" if t >= 60 else f"{t}秒"
+        self._log(f"完成: {len(transcript)} 字符 | 总耗时 {ts}")
+        self._gui(100)
         return result
 
-    def _parse_subtitle_file(self, file_path: Path) -> str:
-        suffix = file_path.suffix.lower()
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        if suffix == ".vtt":
-            return parse_vtt_to_text(content)
-        elif suffix == ".srt":
-            return parse_srt_to_text(content)
-        else:
-            return parse_vtt_to_text(content)
+    def _parse_subtitle_file(self, fp: Path) -> str:
+        s = fp.suffix.lower()
+        c = fp.read_text("utf-8")
+        return parse_vtt_to_text(c) if s == ".vtt" else parse_srt_to_text(c) if s == ".srt" else parse_vtt_to_text(c)
 
     def _transcribe_via_asr(self, url: str) -> str:
         asr = ASREngine(self.config)
         if not asr.is_available():
-            raise RuntimeError("faster-whisper 未安装，请运行: pip install faster-whisper")
+            raise RuntimeError("faster-whisper 未安装")
         if not asr.is_model_downloaded():
-            raise RuntimeError(
-                "语音识别模型尚未下载。\n请前往「设置」页面点击「下载模型」按钮。"
-            )
-
-        model = self.config.whisper_model
-        from src.pipeline.asr_engine import ACCURACY_PRESETS
-        preset_name = ""
-        for name, info in ACCURACY_PRESETS.items():
-            if info["model"] == model:
-                preset_name = f" ({name})"
-                break
-
-        step_label = f"语音识别 · {model}{preset_name}"
-        self._report_progress(step_label, 20, f"模型加载中 ({model})...")
-
-        def asr_progress(pct: int, msg: str):
-            overall = 20 + int(pct * 0.65)
-            self._report_progress(step_label, overall, msg)
-
+            raise RuntimeError("语音识别模型未下载，请到设置页下载")
+        # ASR 进度映射 0-100，只反映音频处理进度
         return asr.transcribe_from_url(
-            url=url,
-            language="zh",
-            cancel_event=self._cancel_event,
-            progress_callback=asr_progress,
+            url=url, language="zh", cancel_event=self._cancel_event,
+            progress_callback=lambda p, m: self._gui(p, m),
         )
 
     def _summarize(self, transcript: str, video_title: str) -> str:
-        summarizer = AISummarizer(self.config)
-        detail = self.config.summary_detail or "大致概览"
-        model = self.config.api_model or "deepseek-chat"
-
-        def progress_wrapper(message: str):
-            self._report_progress(f"AI概述 · {detail} · {model}", 70, message)
-
-        return summarizer.summarize(
-            transcript=transcript,
-            video_title=video_title,
-            detail=detail,
-            progress_callback=progress_wrapper,
+        s = AISummarizer(self.config)
+        self._gui(100, "正在生成概览，半分钟左右...")
+        result = s.summarize(
+            transcript=transcript, video_title=video_title,
+            detail=self.config.summary_detail or "精细概览",
         )
+        self._gui(100)
+        return result

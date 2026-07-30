@@ -3,12 +3,9 @@
 """
 import json
 import logging
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
-
-from src.utils.validators import ytdlp_cmd
 
 logger = logging.getLogger("bili_summarizer")
 
@@ -74,44 +71,23 @@ def extract_video_info(
         subprocess.TimeoutExpired: yt-dlp 超时
         RuntimeError: yt-dlp 执行失败
     """
-    cmd = ytdlp_cmd() + [
-        "--dump-json",
-        "--no-playlist",
-        "--no-download",
-    ]
+    import yt_dlp
 
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "no-playlist": True,
+        "extract_flat": False,
+    }
     if cookie_file and cookie_file.exists():
-        cmd.extend(["--cookies", str(cookie_file)])
-
-    cmd.append(url)
-
-    logger.info("正在提取视频信息: %s", url)
+        opts["cookiefile"] = str(cookie_file)
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("yt-dlp 提取视频信息超时 (%ds)", timeout)
-        raise
-    except FileNotFoundError:
-        logger.error("未找到 yt-dlp，请先安装: pip install yt-dlp")
-        raise RuntimeError("yt-dlp 未安装，请运行: pip install yt-dlp")
-
-    if result.returncode != 0:
-        error_msg = result.stderr.strip() if result.stderr else "未知错误"
-        logger.error("yt-dlp 执行失败: %s", error_msg)
-        raise RuntimeError(f"视频信息提取失败: {error_msg}")
-
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError as e:
-        logger.error("yt-dlp 返回数据解析失败: %s", e)
-        raise RuntimeError("视频信息解析失败")
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            data = ydl.extract_info(url, download=False)
+    except Exception as e:
+        logger.error("yt-dlp 提取失败: %s", e)
+        raise RuntimeError(f"视频信息提取失败: {e}")
 
     # 构建 VideoInfo
     subtitles = _parse_subtitles(data)
@@ -129,12 +105,6 @@ def extract_video_info(
         subtitles=subtitles,
         raw_json=data,
     )
-
-    logger.info("视频信息提取完成: %s (BV%s)", video_info.title, video_info.bvid)
-    logger.info("  时长: %s, UP主: %s", video_info.duration_str, video_info.uploader)
-    if subtitles:
-        sub_names = [s.name for s in subtitles]
-        logger.info("  字幕: %s", ", ".join(sub_names))
 
     return video_info
 
@@ -195,60 +165,6 @@ def list_subtitles(
     cookie_file: Optional[Path] = None,
     timeout: int = 30,
 ) -> List[SubtitleInfo]:
-    """
-    列出视频可用的所有字幕
-
-    Args:
-        url: B站视频URL
-        cookie_file: 可选的cookie文件路径
-        timeout: 超时时间
-
-    Returns:
-        字幕信息列表
-    """
-    cmd = ytdlp_cmd() + [
-        "--list-subs",
-        "--no-playlist",
-        "--no-download",
-    ]
-
-    if cookie_file and cookie_file.exists():
-        cmd.extend(["--cookies", str(cookie_file)])
-
-    cmd.append(url)
-
-    logger.info("正在获取字幕列表...")
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-        )
-    except subprocess.TimeoutExpired:
-        logger.error("获取字幕列表超时")
-        return []
-
-    # 从 yt-dlp 输出中解析字幕
-    subtitles = []
-    in_sub_section = False
-
-    for line in result.stdout.split("\n") + result.stderr.split("\n"):
-        line = line.strip()
-
-        if "Available subtitles" in line or "subtitles for" in line:
-            in_sub_section = True
-            continue
-        if "Available automatic captions" in line:
-            in_sub_section = True
-            continue
-        if in_sub_section and line.startswith(("Language", "formats", "has")):
-            continue
-        if in_sub_section and not line:
-            continue
-
-    # 更可靠的方式是直接用 --dump-json
+    """列出视频可用的所有字幕（复用 extract_video_info）"""
     info = extract_video_info(url, cookie_file, timeout)
     return info.subtitles

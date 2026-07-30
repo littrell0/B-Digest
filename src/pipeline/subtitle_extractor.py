@@ -2,12 +2,10 @@
 字幕提取模块 - 通过 yt-dlp 下载并解析B站视频字幕
 """
 import logging
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import List, Optional
 
-from src.utils.validators import ytdlp_cmd
 from .video_info import SubtitleInfo
 
 logger = logging.getLogger("bili_summarizer")
@@ -70,65 +68,39 @@ class SubtitleExtractor:
         """
         if output_dir is None:
             output_dir = Path(tempfile.mkdtemp(prefix="bili_subs_"))
-
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # yt-dlp 字幕下载模板
-        output_template = output_dir / "%(title)s.%(ext)s"
+        import yt_dlp
 
-        cmd = ytdlp_cmd() + [
-            "--write-subs",
-            "--sub-langs", lang,
-            "--skip-download",
-            "--no-playlist",
-            "--convert-subs", "vtt",
-            "-o", str(output_template),
-        ]
-
+        output_template = str(output_dir / "%(title)s.%(ext)s")
+        opts = {
+            "writesubtitles": True,
+            "subtitleslangs": [lang],
+            "skip_download": True,
+            "outtmpl": output_template,
+            "quiet": True,
+            "no_warnings": True,
+        }
         if self.cookie_file and self.cookie_file.exists():
-            cmd.extend(["--cookies", str(self.cookie_file)])
-
-        cmd.append(url)
+            opts["cookiefile"] = str(self.cookie_file)
 
         logger.info("正在下载字幕 (lang=%s)...", lang)
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                encoding="utf-8",
-            )
-        except subprocess.TimeoutExpired:
-            logger.error("字幕下载超时 (%ds)", timeout)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as e:
+            logger.error("字幕下载失败: %s", e)
             return None
 
-        if result.returncode != 0:
-            stderr = result.stderr.strip()
-            logger.error("字幕下载失败: %s", stderr)
-            return None
-
-        # 查找生成的 VTT 文件
-        vtt_files = list(output_dir.glob("*.vtt"))
-        if vtt_files:
-            vtt_path = vtt_files[0]
-            logger.info("字幕下载完成: %s", vtt_path.name)
-            return vtt_path
-
-        # 可能下载为其他格式
-        for ext in ["*.srt", "*.ass", "*.ssa"]:
+        # 查找生成的文件
+        for ext in ["*.vtt", "*.srt", "*.ass", "*.ssa"]:
             files = list(output_dir.glob(ext))
             if files:
-                logger.info("字幕下载完成 (非VTT格式): %s", files[0].name)
+                logger.info("字幕下载完成: %s", files[0].name)
                 return files[0]
 
         logger.warning("字幕下载完成但未找到输出文件")
-
-        # 打印输出以帮助调试
-        logger.debug("stdout: %s", result.stdout)
-        logger.debug("stderr: %s", result.stderr)
-
         return None
 
     def try_extract_subtitles(

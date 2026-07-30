@@ -83,35 +83,44 @@ class LogPanel(ctk.CTkFrame):
 
 
 class ProgressBar(ctk.CTkFrame):
-    """带标签的进度条"""
+    """带标签的进度条（文字在进度条内部，Canvas 原生绘制无背景）"""
 
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, text_color=None, **kwargs):
+        kwargs.setdefault("fg_color", "transparent")
         super().__init__(master, **kwargs)
 
-        self.status_label = ctk.CTkLabel(
-            self,
-            text="就绪",
-            font=ctk.CTkFont(family="Microsoft YaHei", size=11),
-            anchor="w",
-        )
-        self.status_label.pack(fill="x", padx=5, pady=(5, 0))
-
-        self.bar = ctk.CTkProgressBar(self)
-        self.bar.pack(fill="x", padx=5, pady=(2, 5))
+        self.bar = ctk.CTkProgressBar(self, height=20)
+        self.bar.pack(fill="x", padx=0, pady=8)
         self.bar.set(0)
+
+        # 文字颜色跟随主题
+        if text_color is None:
+            text_color = "#e0e0e0" if ctk.get_appearance_mode() == "Dark" else "#4a3340"
+
+        # 获取内部 Canvas，用 create_text 画文字（零背景）
+        self._canvas = self.bar.winfo_children()[0]
+        c_w = self._canvas.winfo_reqwidth()
+        c_h = self._canvas.winfo_reqheight()
+        self._text_id = self._canvas.create_text(
+            c_w // 2, c_h // 2,
+            text="就绪",
+            font=("Microsoft YaHei", 11),
+            fill=text_color,
+        )
+        self._canvas.bind("<Configure>", self._on_canvas_resize)
+
+    def _on_canvas_resize(self, event):
+        self._canvas.coords(self._text_id, event.width // 2, event.height // 2)
 
     def update(self, percent: int, status: str = ""):
         """更新进度"""
         self.bar.set(percent / 100.0)
-        if status:
-            self.status_label.configure(text=status)
-        else:
-            self.status_label.configure(text=f"进度: {percent}%")
+        text = status if status else f"{percent}%"
+        self._canvas.itemconfigure(self._text_id, text=text)
 
     def reset(self):
-        """重置"""
         self.bar.set(0)
-        self.status_label.configure(text="就绪")
+        self._canvas.itemconfigure(self._text_id, text="就绪")
 
 
 class ProcessButton(ctk.CTkButton):
@@ -139,13 +148,11 @@ class ProcessButton(ctk.CTkButton):
             self.configure(
                 text="处理中...",
                 state="disabled",
-                fg_color="#555555",
             )
         else:
             self.configure(
                 text="开始处理",
                 state="normal",
-                fg_color="#6c63ff",
             )
 
 
@@ -201,7 +208,7 @@ class InfoCard(ctk.CTkFrame):
             text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=11),
             anchor="w",
-            text_color="#8b949e",
+            text_color=None,
         )
         self.info_label.pack(fill="x", padx=10, pady=(0, 10))
 

@@ -11,7 +11,15 @@ from src.config import Config
 API_MODELS = {
     "deepseek-chat": {
         "base_url": "https://api.deepseek.com",
-        "desc": "DeepSeek V3 · 准确 8.5 速度 8 · 综合最稳，几乎免费",
+        "desc": "DeepSeek V3 · 准确 8.5 速度 8 · 适用于 platform.deepseek.com 的 API Key",
+    },
+    "deepseek-v4-pro": {
+        "base_url": "https://api.deepseek.com",
+        "desc": "DeepSeek V4 Pro · 准确 9 速度 8 · 适用于特定端点的 API Key",
+    },
+    "deepseek-v4-flash": {
+        "base_url": "https://api.deepseek.com",
+        "desc": "DeepSeek V4 Flash · 准确 8.5 速度 9 · 适用于特定端点的 API Key",
     },
     "qwen-plus": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -119,7 +127,7 @@ class SettingsTab(ctk.CTkFrame):
             api_card,
             text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
             anchor="w",
         )
         self.api_model_desc.pack(fill="x", padx=10, pady=(0, 5))
@@ -200,7 +208,7 @@ class SettingsTab(ctk.CTkFrame):
             summary_frame,
             text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
         )
         self.summary_detail_info.pack(side="left")
 
@@ -234,7 +242,7 @@ class SettingsTab(ctk.CTkFrame):
             asr_card,
             text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
             anchor="w",
         )
         self.preset_info.pack(fill="x", padx=10, pady=(0, 5))
@@ -265,7 +273,7 @@ class SettingsTab(ctk.CTkFrame):
             asr_card,
             text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
         )
         self.model_progress_label.pack(anchor="w", padx=10, pady=(0, 5))
 
@@ -273,7 +281,7 @@ class SettingsTab(ctk.CTkFrame):
             asr_card,
             text="推荐 large-v3，约 3GB。点击上方按钮可提前下载，处理视频时无需等待",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
         )
         model_hint.pack(anchor="w", padx=10, pady=(0, 10))
 
@@ -330,7 +338,7 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkLabel(
             fmt_frame, text="markdown=带格式  txt=纯文本",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
         ).pack(side="left", padx=8)
 
         # === 界面设置 ===
@@ -348,7 +356,7 @@ class SettingsTab(ctk.CTkFrame):
         self.theme_var = ctk.StringVar(value=self.config.theme)
         self.theme_menu = ctk.CTkOptionMenu(
             theme_frame,
-            values=["dark", "light"],
+            values=["dark", "light (测试中)"],
             variable=self.theme_var,
             font=ctk.CTkFont(family="Microsoft YaHei", size=11),
             width=80,
@@ -363,7 +371,7 @@ class SettingsTab(ctk.CTkFrame):
             bili_card,
             text="在浏览器中登录B站后，从Cookie中获取以下信息",
             font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
+            text_color=None,
         )
         bili_hint.pack(anchor="w", padx=10, pady=(10, 5))
 
@@ -433,7 +441,8 @@ class SettingsTab(ctk.CTkFrame):
         self.output_dir_entry.insert(0, self.config.output_dir)
         self.output_fmt_var.set(self.config.output_format or "markdown")
         self.summary_detail_var.set(self.config.summary_detail or "精细概览")
-        self.theme_var.set(self.config.theme or "dark")
+        t = self.config.theme or "dark"
+        self.theme_var.set(t if t == "dark" else "light (测试中)")
         self._update_summary_detail_info()
 
         if self.config.bili_sessdata:
@@ -497,8 +506,14 @@ class SettingsTab(ctk.CTkFrame):
     def _on_theme_changed(self, choice: str):
         """主题切换立即生效"""
         import customtkinter as ctk
-        ctk.set_appearance_mode(choice)
-        self.config.theme = choice
+        import logging
+        logger = logging.getLogger("bili_summarizer")
+        mode = "dark" if choice == "dark" else "light"
+        logger.info(f"Theme switch to: {mode}")
+        ctk.set_appearance_mode(mode)
+        ctk.set_default_color_theme("dark-blue" if mode == "dark" else "blue")
+        self.config.theme = mode
+        logger.info(f"Theme set done: appearance={ctk.get_appearance_mode()}")
 
     def _update_summary_detail_info(self):
         """更新概览详细程度说明"""
@@ -533,7 +548,8 @@ class SettingsTab(ctk.CTkFrame):
         self.config.summary_detail = self.summary_detail_var.get()
         self.config.output_dir = self.output_dir_entry.get().strip() or "./output"
         self.config.output_format = self.output_fmt_var.get()
-        self.config.theme = self.theme_var.get()
+        t = self.theme_var.get()
+        self.config.theme = "dark" if t == "dark" else "light"
 
         # 直接读取 B站 Cookie 输入框
         if hasattr(self, "sessdata_entry"):

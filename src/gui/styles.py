@@ -25,22 +25,22 @@ DARK_THEME = {
 }
 
 LIGHT_THEME = {
-    "bg": "#f5f5f5",
-    "fg": "#333333",
-    "accent": "#6c63ff",
-    "accent_hover": "#5a52d5",
+    "bg": "#fdf0f4",        # 淡粉底色（来自图标淡粉调）
+    "fg": "#4a3340",        # 深棕粉文字
+    "accent": "#f07890",    # 图标粉色
+    "accent_hover": "#d06078",
     "success": "#4caf50",
     "warning": "#ff9800",
     "error": "#f44336",
-    "card_bg": "#ffffff",
-    "card_border": "#dddddd",
+    "card_bg": "#fff5f7",   # 微粉卡片
+    "card_border": "#f5d0d8",
     "input_bg": "#ffffff",
-    "input_fg": "#333333",
-    "log_bg": "#fafafa",
-    "log_fg": "#333333",
-    "progress_bg": "#e0e0e0",
-    "tab_bg": "#eeeeee",
-    "tab_active": "#6c63ff",
+    "input_fg": "#4a3340",
+    "log_bg": "#fffafb",
+    "log_fg": "#4a3340",
+    "progress_bg": "#f5dde2",
+    "tab_bg": "#fde8ed",
+    "tab_active": "#f07890",
 }
 
 

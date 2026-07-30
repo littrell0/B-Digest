@@ -50,7 +50,7 @@ class BatchTab(ctk.CTkFrame):
         desc = ctk.CTkLabel(
             self, text="登录B站账号，检测关注UP主更新，一键批量处理",
             font=ctk.CTkFont(family="Microsoft YaHei", size=11),
-            text_color="#8b949e",
+            text_color=None,
         )
         desc.pack(anchor="w", padx=10, pady=(0, 10))
 
@@ -153,7 +153,7 @@ class BatchTab(ctk.CTkFrame):
             ctrl_bar,
             text="",
             font=ctk.CTkFont(family="Microsoft YaHei", size=11),
-            text_color="#8b949e",
+            text_color=None,
         )
         self.video_count.pack(side="left", padx=15)
 
@@ -174,7 +174,7 @@ class BatchTab(ctk.CTkFrame):
             self.video_frame,
             text="请先登录并刷新视频列表",
             font=ctk.CTkFont(family="Microsoft YaHei", size=12),
-            text_color="#8b949e",
+            text_color=None,
         )
         self.empty_label.pack(pady=30)
 
@@ -217,27 +217,23 @@ class BatchTab(ctk.CTkFrame):
         # 初始隐藏
 
         # 批量进度
-        self.batch_progress = ctk.CTkProgressBar(action_card)
+        self.batch_progress = ctk.CTkProgressBar(action_card, height=20)
         self.batch_progress.pack(fill="x", padx=10, pady=(0, 2))
         self.batch_progress.set(0)
+        self._bc = self.batch_progress.winfo_children()[0]
+        self._bt = self._bc.create_text(100, 10, text="", font=("Microsoft YaHei", 10),
+                                         fill="#e0e0e0" if ctk.get_appearance_mode() == "Dark" else "#4a3340")
+        self._bc.bind("<Configure>", lambda e: self._bc.coords(self._bt, e.width//2, e.height//2))
 
-        self.batch_status = ctk.CTkLabel(
-            action_card, text="",
-            font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#8b949e",
-        )
-        self.batch_status.pack(anchor="w", padx=10, pady=(0, 2))
-
-        self.sub_progress = ctk.CTkProgressBar(action_card, progress_color="#6c63ff")
+        self.sub_progress = ctk.CTkProgressBar(action_card, progress_color="#6c63ff", height=20)
         self.sub_progress.pack(fill="x", padx=10, pady=(0, 2))
         self.sub_progress.set(0)
 
-        self.sub_status = ctk.CTkLabel(
-            action_card, text="",
-            font=ctk.CTkFont(family="Microsoft YaHei", size=10),
-            text_color="#c4b5fd",
-        )
-        self.sub_status.pack(anchor="w", padx=10, pady=(0, 8))
+        # Canvas 文字（零背景）
+        tc = "#c4b5fd" if ctk.get_appearance_mode() == "Dark" else "#d06078"
+        self._sub_canvas = self.sub_progress.winfo_children()[0]
+        self._sub_text = self._sub_canvas.create_text(100, 9, text="", font=("Microsoft YaHei", 10), fill=tc)
+        self._sub_canvas.bind("<Configure>", lambda e: self._sub_canvas.coords(self._sub_text, e.width//2, e.height//2))
 
         # === 日志（撑满剩余空间，最少6行） ===
         log_outer = ctk.CTkFrame(self)
@@ -347,7 +343,7 @@ class BatchTab(ctk.CTkFrame):
                 self.video_frame,
                 text="该时间段内没有新视频",
                 font=ctk.CTkFont(family="Microsoft YaHei", size=12),
-                text_color="#8b949e",
+                text_color=None,
             )
             self.empty_label.pack(pady=30)
             self._update_batch_btn()
@@ -374,7 +370,7 @@ class BatchTab(ctk.CTkFrame):
 
             cb = ctk.CTkCheckBox(
                 row, text="", variable=var, width=20,
-                checkbox_width=18, checkbox_height=18,
+                checkbox_width=18, checkbox_height=20,
                 command=self._update_batch_btn,
             )
             cb.pack(side="left", padx=(0, 5))
@@ -432,7 +428,7 @@ class BatchTab(ctk.CTkFrame):
         self.batch_btn.configure(state="disabled")
         self.batch_stop_btn.pack(side="left", padx=(0, 8))
         self.batch_progress.set(0)
-        self.batch_status.configure(text=f"准备处理 {len(selected)} 个视频...")
+        self._bc.itemconfigure(self._bt, text=f"准备处理 {len(selected)} 个...")
 
         if not self.config.is_api_configured:
             self.log_panel.warning("未配置 DeepSeek API Key，将只生成逐字稿")
@@ -472,11 +468,12 @@ class BatchTab(ctk.CTkFrame):
     def _update_sub_progress(self, pct: int, msg: str):
         """更新当前视频的子进度"""
         self.sub_progress.set(pct / 100.0)
-        self.sub_status.configure(text=msg)
+        text = msg if msg else f"{pct}%"
+        self._sub_canvas.itemconfigure(self._sub_text, text=text)
 
     def _update_batch_ui(self, current, total, msg):
         self.batch_progress.set(current / total)
-        self.batch_status.configure(text=f"{current}/{total} · {msg}")
+        self._bc.itemconfigure(self._bt, text=f"{current}/{total} · {msg}")
 
     def _log_result(self, result, video, idx):
         if result.error:
@@ -489,7 +486,7 @@ class BatchTab(ctk.CTkFrame):
         self._pipeline = None
         self.batch_btn.configure(state="normal")
         self.batch_stop_btn.pack_forget()
-        self.batch_status.configure(text="批量处理完成")
+        self._bc.itemconfigure(self._bt, text="批量处理完成")
         self.log_panel.success("全部处理完成！")
 
     def _do_stop(self):
@@ -534,7 +531,7 @@ class BatchTab(ctk.CTkFrame):
         ctk.CTkLabel(
             dialog, text="取消勾选的UP主在刷新视频列表时将被跳过",
             font=ctk.CTkFont(family="Microsoft YaHei", size=11),
-            text_color="#8b949e",
+            text_color=None,
         ).pack(pady=(10, 5))
 
         # 全选/取消

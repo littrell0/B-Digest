@@ -3,7 +3,6 @@
 """
 import logging
 import os
-import subprocess
 import sys
 import tempfile
 import threading
@@ -12,7 +11,6 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from src.config import Config
-from src.utils.validators import ytdlp_cmd
 
 logger = logging.getLogger("bili_summarizer")
 
@@ -246,22 +244,16 @@ class ASREngine:
         device = self.config.whisper_device
         compute_type = self.config.whisper_compute_type
 
-        # 加载模型
+        # 加载模型（不走进度条）
         if self._model is None or self._loaded_model_size != model_size:
-            if progress_callback:
-                progress_callback(0, f"正在加载模型 {model_size}...")
             from faster_whisper import WhisperModel
             local_path = self._get_local_model_path(model_size)
             model_path = str(local_path) if local_path.exists() else model_size
-            logger.info("加载模型: %s (device=%s)", model_path, device)
             self._model = WhisperModel(model_path, device=device, compute_type=compute_type)
             self._loaded_model_size = model_size
 
-        if progress_callback:
-            progress_callback(5, "正在进行语音识别...")
-
         self._transcribe_start = time.time()
-        _last_progress_time = 0  # 上次报告进度的时间
+        _last_progress_time = 0
 
         segments, info = self._model.transcribe(
             str(audio_path),
@@ -271,7 +263,7 @@ class ASREngine:
             vad_parameters=dict(min_silence_duration_ms=500),
         )
 
-        logger.info("检测语言: %s (置信度: %.2f)", info.language, info.language_probability)
+        # 语音识别进行中
 
         text_parts = []
         total_segments = 0
@@ -291,14 +283,14 @@ class ASREngine:
                 text_parts.append(text)
             total_segments += 1
 
-            # 进度报告: 处理完30秒音频后首次报，之后每30s(真实时间)
+            # 进度报告: 处理完15秒音频后首次报，之后每8s
             now = time.time()
             elapsed = now - self._transcribe_start
-            audio_done = segment.end  # 已处理的音频秒数
+            audio_done = segment.end
             should_report = (
-                (_last_progress_time == 0 and audio_done >= 30) or          # 至少30秒音频
-                (_last_progress_time == 0 and elapsed >= 60) or             # 或60秒兜底
-                (elapsed - _last_progress_time >= 30)                       # 之后每30s
+                (_last_progress_time == 0 and audio_done >= 15) or
+                (_last_progress_time == 0 and elapsed >= 30) or
+                (elapsed - _last_progress_time >= 8)
             )
 
             if progress_callback and should_report:
@@ -316,8 +308,6 @@ class ASREngine:
                 progress_callback(progress_pct, f"{progress_pct}% · {eta_str}")
 
         result = "\n".join(text_parts)
-        logger.info("语音识别完成: %d 段, %d 字符, %.1f 分钟", total_segments, len(result), total_duration / 60)
-
         if progress_callback:
             progress_callback(100, f"识别完成 ({len(result)} 字符)")
 
@@ -336,40 +326,34 @@ class ASREngine:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_template = output_dir / "%(title)s.%(ext)s"
 
-        # 多个格式备选，逐步降级
-        formats_to_try = [
-            ["-f", "bestaudio[ext=m4a]/bestaudio"],
-            ["-f", "bestaudio/best"],
-            ["-f", "best"],
-            [],  # 不指定格式，让 yt-dlp 自己选
-        ]
+        # 多个格式备选
+        import yt_dlp
 
+        formats = ["bestaudio[ext=m4a]/bestaudio", "bestaudio/best", "best", None]
         last_error = None
-        for fmt_args in formats_to_try:
-            cmd = ytdlp_cmd() + ["--no-playlist", "-o", str(output_template)]
-            cmd.extend(fmt_args)
+        for fmt in formats:
+            opts = {
+                "outtmpl": str(output_template),
+                "quiet": True, "no_warnings": True,
+            }
+            if fmt:
+                opts["format"] = fmt
             if cookie_file and cookie_file.exists():
-                cmd.extend(["--cookies", str(cookie_file)])
-            cmd.append(url)
-
+                opts["cookiefile"] = str(cookie_file)
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, encoding="utf-8")
-            except subprocess.TimeoutExpired:
-                raise RuntimeError(f"音频下载超时 ({timeout}秒)")
-
-            if result.returncode == 0:
-                break  # 成功
-
-            stderr = result.stderr or ""
-            last_error = stderr.strip()[-300:]
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.download([url])
+                break
+            except Exception as e:
+                last_error = str(e)[-300:]
         else:
-            raise RuntimeError(f"音频下载失败（已尝试多种格式）: {last_error or '未知错误'}")
+            raise RuntimeError(f"音频下载失败: {last_error or '未知错误'}")
 
         for ext in ["m4a", "wav", "mp3", "opus", "aac", "webm", "mkv"]:
             files = list(output_dir.glob(f"*.{ext}"))
             if files:
                 p = files[0]
-                logger.info("音频下载完成: %s (%.1f MB)", p.name, p.stat().st_size / 1_000_000)
+                pass  # 音频下载完成
                 return p
 
         all_files = list(output_dir.glob("*"))
@@ -390,8 +374,6 @@ class ASREngine:
         keep_audio: bool = False,
     ) -> str:
         """一站式：下载音频并转写"""
-        if progress_callback:
-            progress_callback(0, "正在下载音频...")
         audio_path = self.download_audio(url, cookie_file=cookie_file)
         try:
             return self.transcribe(audio_path, language=language,

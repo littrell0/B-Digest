@@ -2,12 +2,15 @@
 主应用窗口
 """
 import queue
+from pathlib import Path
+
 import customtkinter as ctk
 
 from src.config import Config
 from src.gui.styles import WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT
 from src.gui.single_video_tab import SingleVideoTab
 from src.gui.batch_tab import BatchTab
+from src.gui.search_tab import SearchTab
 from src.gui.qa_tab import QATab
 from src.gui.settings_tab import SettingsTab
 
@@ -22,11 +25,26 @@ class App(ctk.CTk):
         self.log_queue = queue.Queue()
 
         # 设置外观
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        mode = "dark" if config.theme not in ("dark", "light") else config.theme
+        ctk.set_appearance_mode(mode)
+        # 暗色用 dark-blue，浅色用 blue
+        theme_name = "dark-blue" if mode == "dark" else "blue"
+        ctk.set_default_color_theme(theme_name)
+
+        # 设置窗口图标
+        try:
+            import sys
+            if getattr(sys, 'frozen', False):
+                ico = Path(sys.executable).parent / "icon.ico"
+            else:
+                ico = Path(__file__).parent.parent.parent / "icon.ico"
+            if ico.exists():
+                self.iconbitmap(str(ico))
+        except Exception:
+            pass
 
         # 窗口配置
-        self.title("Bili Video Summarizer - B站视频转文字概述")
+        self.title("B站省流助手")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
 
@@ -76,14 +94,15 @@ class App(ctk.CTk):
         self.tab_view.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
         # 添加 Tab
-        self.tab_view.add("单视频处理")
-        self.tab_view.add("批量处理")
+        self.tab_view.add("视频链接")
+        self.tab_view.add("我的关注")
+        self.tab_view.add("关键词搜索")
         self.tab_view.add("AI 问答")
         self.tab_view.add("设置")
 
         # 单视频处理 Tab
         self.single_tab = SingleVideoTab(
-            self.tab_view.tab("单视频处理"),
+            self.tab_view.tab("视频链接"),
             config=self.config,
             log_queue=self.log_queue,
         )
@@ -91,11 +110,19 @@ class App(ctk.CTk):
 
         # 批量处理 Tab
         self.batch_tab = BatchTab(
-            self.tab_view.tab("批量处理"),
+            self.tab_view.tab("我的关注"),
             config=self.config,
             log_queue=self.log_queue,
         )
         self.batch_tab.pack(fill="both", expand=True)
+
+        # 视频搜索 Tab
+        self.search_tab = SearchTab(
+            self.tab_view.tab("关键词搜索"),
+            config=self.config,
+            log_queue=self.log_queue,
+        )
+        self.search_tab.pack(fill="both", expand=True)
 
         # AI 问答 Tab
         self.qa_tab = QATab(
@@ -113,7 +140,7 @@ class App(ctk.CTk):
         self.settings_tab_page.pack(fill="both", expand=True)
 
         # 默认选中第一个Tab
-        self.tab_view.set("单视频处理")
+        self.tab_view.set("视频链接")
 
     def _bind_shortcuts(self):
         """绑定键盘快捷键"""
@@ -127,6 +154,8 @@ class App(ctk.CTk):
             self.single_tab.poll_logs()
         if hasattr(self, 'batch_tab'):
             self.batch_tab.poll_logs()
+        if hasattr(self, 'search_tab'):
+            self.search_tab.poll_logs()
         if hasattr(self, 'qa_tab'):
             self.qa_tab.poll_logs()
 

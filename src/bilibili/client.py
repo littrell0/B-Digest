@@ -2,8 +2,10 @@
 B站 客户端 — bilibili-api-python (WBI签名) + 注入浏览器 Session
 """
 import asyncio
+import httpx
 import logging
 import random
+import time
 from datetime import datetime, timedelta
 
 logger = logging.getLogger("bili_summarizer")
@@ -225,3 +227,45 @@ class BilibiliClient:
         recent_videos.sort(key=lambda x: x["pubdate"], reverse=True)
         logger.info("完成: %d视频, %d个UP主失败", len(recent_videos), len(failed_up))
         return recent_videos
+
+
+# ===== 搜索（无需登录） =====
+
+_last_search_time = 0.0
+
+def search_videos(keyword: str, page: int = 1, duration: int = 0) -> dict:
+    """
+    B站视频搜索（无需Cookie）
+
+    Args:
+        keyword: 搜索关键词
+        page: 页码
+        duration: 时长筛选 0=全部 1=<10min 2=10-30min 3=30-60min 4=>60min
+
+    Returns: {"numResults": int, "result": [...]}
+    """
+    # 搜索冷却：至少间隔 5 秒
+    global _last_search_time
+    elapsed = time.time() - _last_search_time
+    if elapsed < 5:
+        time.sleep(5 - elapsed)
+    _last_search_time = time.time()
+
+    resp = httpx.get(
+        "https://api.bilibili.com/x/web-interface/search/type",
+        params={
+            "search_type": "video", "keyword": keyword,
+            "page": page, "duration": duration, "order": "default",
+        },
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+            "Referer": "https://www.bilibili.com/",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Accept": "application/json, text/plain, */*",
+        },
+        timeout=15,
+    )
+    data = resp.json()
+    if data.get("code") != 0:
+        raise RuntimeError(data.get("message", "搜索失败"))
+    return data["data"]
