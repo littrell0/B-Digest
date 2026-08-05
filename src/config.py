@@ -13,7 +13,7 @@ from typing import Optional
 DEFAULTS = {
     "api_key": "",
     "api_base_url": "https://api.deepseek.com",
-    "api_model": "deepseek-chat",
+    "api_model": "deepseek-v4-flash",
     "whisper_model": "small",
     "whisper_device": "cpu",
     "whisper_compute_type": "int8",
@@ -36,7 +36,7 @@ class Config:
     # DeepSeek API
     api_key: str = ""
     api_base_url: str = "https://api.deepseek.com"
-    api_model: str = "deepseek-chat"
+    api_model: str = "deepseek-v4-flash"
 
     # 语音识别
     whisper_model: str = "small"
@@ -137,6 +137,10 @@ class Config:
                 old_val = getattr(config, old_key)
                 if old_val and not getattr(config, new_key):
                     setattr(config, new_key, old_val)
+
+        # 向后兼容：DeepSeek 已于 2026-07-24 废弃 deepseek-chat，自动迁移到 V4 Flash
+        if config.api_model == "deepseek-chat":
+            config.api_model = "deepseek-v4-flash"
 
         return config
 

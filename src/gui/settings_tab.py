@@ -9,17 +9,13 @@ from src.config import Config
 
 # API 模型预设
 API_MODELS = {
-    "deepseek-chat": {
-        "base_url": "https://api.deepseek.com",
-        "desc": "DeepSeek V3 · 准确 8.5 速度 8 · 适用于 platform.deepseek.com 的 API Key",
-    },
     "deepseek-v4-pro": {
         "base_url": "https://api.deepseek.com",
-        "desc": "DeepSeek V4 Pro · 准确 9 速度 8 · 适用于特定端点的 API Key",
+        "desc": "DeepSeek V4 Pro · 准确 9 速度 8 · 推理最强，价格较高",
     },
     "deepseek-v4-flash": {
         "base_url": "https://api.deepseek.com",
-        "desc": "DeepSeek V4 Flash · 准确 8.5 速度 9 · 适用于特定端点的 API Key",
+        "desc": "DeepSeek V4 Flash 正式版 · 准确 8.5 速度 9 · 高性价比，默认推荐",
     },
     "qwen-plus": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -111,7 +107,7 @@ class SettingsTab(ctk.CTkFrame):
             width=100,
         ).pack(side="left")
 
-        self.api_preset_var = ctk.StringVar(value="deepseek-chat")
+        self.api_preset_var = ctk.StringVar(value="deepseek-v4-flash")
         self.api_preset_menu = ctk.CTkOptionMenu(
             model_sel_frame,
             values=list(API_MODELS.keys()),
@@ -479,11 +475,11 @@ class SettingsTab(ctk.CTkFrame):
 
     def _sync_api_preset(self):
         """根据当前 model 匹配预设下拉"""
-        model = self.config.api_model or "deepseek-chat"
+        model = self.config.api_model or "deepseek-v4-flash"
         if model in API_MODELS:
             self.api_preset_var.set(model)
         else:
-            self.api_preset_var.set("deepseek-chat")
+            self.api_preset_var.set("deepseek-v4-flash")
         self._update_api_model_desc()
 
     def _on_api_preset_changed(self, choice: str):
